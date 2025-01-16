@@ -1,0 +1,214 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+link <- "~/4a/mémoire/fr.cdsp.ddi.elipss.tab"
+ea24 <- read.delim(link, sep = "\t")
+#str(data)
+```
+
+```{r}
+
+install.packages("psych")
+
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(psych)
+
+```
+
+
+```{r}
+#Variables of interest
+#The variable "trust in the european parliament" was not kept because it may capture pro/anti feelings towards the EU
+
+#ea24_i10_5 Confiance dans les institutions : Les partis politiques
+#ea24_i10_1 Confiance dans les institutions : L’Assemblée nationale
+#ea24_i10_4 Confiance dans les institutions : Les hommes et femmes politiques
+#ea24_i2 Fonctionnement de la démocratie en France
+#ea24_i2 Fonctionnement de la démocratie en France
+
+#https://ucla-econ-425t.github.io/2023winter/slides/08-tree/workflow_rf_class.html
+
+#Variables to trimm off 
+
+# 1) Technical variables
+#panel Vague de recrutement/ rafraîchissement ELIPSS
+#poids_init Poids initiaux - panel rafraîchi en 2023
+#poids_ea24 Poids individu - panel rafraîchi en 2023
+#pdsplt_e .. Poids individu - panel rafraîchi en 2020
+#pdsplt_i .. Poids initiaux - panel rafraîchi en 2020
+
+# 2) Non-political variables 
+#ea24_k6b Fumeur quotidien
+#ea24_k6 Fumeur
+#ea24_k4 Consommation d'alcool au cours des douze derniers mois
+#ea24_k3 Fréquence activité sportive 30 minutes d'affilée
+#ea24_k2_ .. Poids de l'interviewé (recodage)
+#ea24_k1_ .. Taille de l'interviewé (recodage)
+
+data <- ea24 |>
+  select(-ea24_k6b, -ea24_k6, -ea24_k4, -ea24_k3) |>
+  rename(conf_partis = ea24_i10_5,
+         conf_perso = ea24_i10_4,
+         conf_an = ea24_i10_1,
+         conf_g = ea24_f9
+         )
+
+```
+
+```{r}
+#Political orientation and trust in the Parliament
+#ea24_i9a = proximité partisane
+
+PO_data <- data |>
+  select(ea24_i8, ea24_i10_1) |>
+  count(ea24_i8, ea24_i10_1) |>
+  #pivot_wider(names_from = ea24_i8, values_from = n)
+  as.matrix()
+
+PO_plot <- ggplot(PO_data, aes(x = ea24_i8, y = ea24_i10_1, fill = n)) +
+  geom_tile() +
+  labs(title = "confiance dans l'assemblée selon le positionnement gauche/droite", 
+       x = "positionnement gauche/droite", 
+       y = "confiance dans l'assemblée",
+       fill = "count") +
+  scale_fill_continuous(type = "viridis")
+
+#PO_plot
+
+
+```
+
+```{r}
+
+histogram <- function(data,a, b) {
+  if (missing(b)) {b <- 1}
+  x_label <- deparse(substitute(a))
+  title_label <- paste("bin size =", deparse(substitute(b)))
+  output <- ggplot(data = data, aes(x = {{a}})) +
+    geom_histogram(binwidth = b) +
+    labs(title = title_label,
+         x = x_label)
+  
+  return(output)
+}
+
+histogram(data, conf_an)
+histogram(data, conf_partis)
+histogram(data, conf_perso)
+histogram(data, conf_g)
+
+```
+
+```{r}
+
+heat <- function(data,a, b) {
+  x_label <- deparse(substitute(a))
+  y_label <- deparse(substitute(b))
+  title_label <- paste(y_label, "selon", x_label)
+  data <- data |> count({{a}}, {{b}}, name = "n")
+  output <- ggplot(data = data, aes(x = {{a}}, y = {{b}}, fill = n)) +
+    geom_tile() +
+    labs(title = title_label,
+         x = x_label,
+         y = y_label) +
+    scale_fill_continuous(type = "viridis")
+  
+  return(output)
+}
+
+heat(data, conf_g, conf_an)
+heat(data, conf_g, conf_partis)
+heat(data, conf_g, conf_perso)
+
+```
+```{r}
+
+cor_matrix <- cor(data |> select(conf_an, 
+                                 conf_g, 
+                                 conf_partis, 
+                                 conf_perso, 
+                                 ea24_i2,
+                                 ea24_i8), 
+                  method = "pearson",
+                  use = "complete.obs")  
+print(cor_matrix)
+
+```
+
+```{r}
+data <- data |> mutate(conf_latent = (conf_partis + conf_an + conf_perso)/3)
+histogram(data, conf_latent)
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+```{r}
+
+cor_matrix2 <- cor(data |> select(conf_an, 
+                                 conf_partis, 
+                                 conf_perso), 
+                  method = "pearson",
+                  use = "complete.obs")  
+
+KMO_test <- KMO(cor_matrix2)
+KMO_test
+```
+```{r}
+bart.test <- cortest.bartlett(cor_matrix2, n = nrow(data))
+bart.test$p.value
+
+```
+```{r}
+eigen.values <- eigen(cor_matrix2)
+eigen.values$values
+
+scree(data |> select(conf_an, 
+                     conf_partis, 
+                     conf_perso), 
+      pc = FALSE)
+
+fa.parallel(data |> select(conf_an, 
+                     conf_partis, 
+                     conf_perso), 
+            fa = "fa")
+
+```
+```{r}
+
+factor <- fa(data |> select(conf_an, 
+                            conf_partis, 
+                            conf_perso), 
+             nfactors = 1, rotate = "none",
+             scores = "regression")
+
+factor
+
+data$conf_latent <- factor$scores
+factor$scores
+
+original_min <- 0
+original_max <- 10
+
+data$conf_latent_rescaled <- (data$conf_latent - min(data$conf_latent, na.rm = TRUE)) / 
+                                 (max(data$conf_latent, na.rm = TRUE) - min(data$conf_latent, na.rm = TRUE)) * 
+                                 (original_max - original_min) + original_min
+
+```
+```{r}
+histogram(data, conf_latent)
+histogram(data, conf_latent_rescaled)
+data$conf_latent_rescaled
+```
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
